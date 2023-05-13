@@ -75,5 +75,5 @@ pub mod hex;
 pub mod json;
 
 mod rustc_serialize {
-    pub use serialize::*;
+    pub use crate::serialize::*;
 }
