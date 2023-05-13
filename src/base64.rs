@@ -61,13 +61,13 @@ pub static URL_SAFE: Config =
 pub static MIME: Config =
     Config {char_set: Standard, newline: Newline::CRLF, pad: true, line_length: Some(76)};
 
-static STANDARD_CHARS: &'static[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
-                                        abcdefghijklmnopqrstuvwxyz\
-                                        0123456789+/";
+static STANDARD_CHARS: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                                         abcdefghijklmnopqrstuvwxyz\
+                                         0123456789+/";
 
-static URLSAFE_CHARS: &'static[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
-                                       abcdefghijklmnopqrstuvwxyz\
-                                       0123456789-_";
+static URL_SAFE_CHARS: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                                         abcdefghijklmnopqrstuvwxyz\
+                                         0123456789-_";
 
 /// A trait for converting a value to base64 encoding.
 pub trait ToBase64 {
@@ -93,7 +93,7 @@ impl ToBase64 for [u8] {
     fn to_base64(&self, config: Config) -> String {
         let bytes = match config.char_set {
             Standard => STANDARD_CHARS,
-            UrlSafe => URLSAFE_CHARS
+            UrlSafe => URL_SAFE_CHARS
         };
 
         let len = self.len();
@@ -102,91 +102,109 @@ impl ToBase64 for [u8] {
             Newline::CRLF => "\r\n",
         };
 
-        // Preallocate memory.
-        let mut prealloc_len = (len + 2) / 3 * 4;
-        if let Some(line_length) = config.line_length {
-            let num_lines = match prealloc_len {
-                0 => 0,
-                n => (n - 1) / line_length
-            };
-            prealloc_len += num_lines * newline.bytes().count();
-        }
-
-        let mut out_bytes = vec![b'='; prealloc_len];
-
         // Deal with padding bytes
         let mod_len = len % 3;
 
+        // Preallocate memory.
+        let mut prealloc_len = if config.pad {
+            ((len + 2) / 3) * 4
+        } else {
+            match mod_len {
+                0 => (len / 3) * 4,
+                1 => (len / 3) * 4 + 2,
+                2 => (len / 3) * 4 + 3,
+                _ => panic!("Algebra is broken, please alert the math police")
+            }
+        };
+        if let Some(line_length) = config.line_length {
+            let num_line_breaks = match prealloc_len {
+                0 => 0,
+                n => (n - 1) / line_length
+            };
+            prealloc_len += num_line_breaks * newline.bytes().count();
+        }
+
+        // SAFETY: The use of `set_len` below is safe, as `u8` is `Copy` and
+        // the capacity was already initialized to `prealloc_len`.
+        let mut out_bytes: Vec<u8> = Vec::with_capacity(prealloc_len);
+        unsafe { out_bytes.set_len(prealloc_len); }
+
         // Use iterators to reduce branching
         {
+            let mut write_len = 0;
             let mut cur_length = 0;
 
-            let mut s_in = self[..len - mod_len].iter().map(|&x| x as u32);
+            let mut s_in = self[ .. len - mod_len].iter().map(|&x| x as u32);
             let mut s_out = out_bytes.iter_mut();
 
             // Convenient shorthand
             let enc = |val| bytes[val as usize];
-            let mut write = |val| *s_out.next().unwrap() = val;
-
-            // Iterate though blocks of 4
-            while let (Some(first), Some(second), Some(third)) =
-                        (s_in.next(), s_in.next(), s_in.next()) {
-
+            let mut write = |val| {
                 // Line break if needed
                 if let Some(line_length) = config.line_length {
                     if cur_length >= line_length {
-                        for b in newline.bytes() { write(b) };
+                        for b in newline.bytes() {
+                            *s_out.next().unwrap() = b;
+                            write_len += 1;
+                        }
                         cur_length = 0;
                     }
                 }
+                *s_out.next().unwrap() = val;
+                write_len += 1;
+                cur_length += 1;
+            };
 
-                let n = first << 16 | second << 8 | third;
-
+            // Iterate though blocks of 4
+            loop {
+                let first = match s_in.next() {
+                    None => break,
+                    Some(first) => first
+                };
+                let second = s_in.next().unwrap();
+                let third = s_in.next().unwrap();
+                let n = (first << 16) | (second << 8) | third;
                 // This 24-bit number gets separated into four 6-bit numbers.
                 write(enc((n >> 18) & 63));
                 write(enc((n >> 12) & 63));
-                write(enc((n >> 6 ) & 63));
-                write(enc((n >> 0 ) & 63));
-
-                cur_length += 4;
-            }
-
-            // Line break only needed if padding is required
-            if mod_len != 0 {
-                if let Some(line_length) = config.line_length {
-                    if cur_length >= line_length {
-                        for b in newline.bytes() { write(b) };
-                    }
-                }
+                write(enc((n >>  6) & 63));
+                write(enc((n      ) & 63));
             }
 
             // Heh, would be cool if we knew this was exhaustive
             // (the dream of bounded integer types)
             match mod_len {
-                0 => (),
+                0 => {}
                 1 => {
-                    let n = (self[len-1] as u32) << 16;
+                    let first = self[len - 1] as u32;
+                    let n = first << 16;
                     write(enc((n >> 18) & 63));
                     write(enc((n >> 12) & 63));
+                    if config.pad {
+                        write(b'=');
+                        write(b'=');
+                    }
                 }
                 2 => {
-                    let n = (self[len-2] as u32) << 16 |
-                            (self[len-1] as u32) << 8;
+                    let first = self[len - 2] as u32;
+                    let second = self[len - 1] as u32;
+                    let n = (first << 16) | (second << 8);
                     write(enc((n >> 18) & 63));
                     write(enc((n >> 12) & 63));
-                    write(enc((n >> 6 ) & 63));
+                    write(enc((n >>  6) & 63));
+                    if config.pad {
+                        write(b'=');
+                    }
                 }
                 _ => panic!("Algebra is broken, please alert the math police")
             }
+
+            assert_eq!(write_len, prealloc_len);
         }
 
-        // We get padding for "free", so only have to drop it if unwanted.
-        if !config.pad {
-            while let Some(&b'=') = out_bytes.last() {
-                out_bytes.pop();
-            }
-        }
-
+        // SAFETY: This is safe because `out_bytes` was constructed out of
+        // only ASCII bytes, and we verified that it was fully initialized
+        // via `write_len`.
         unsafe { String::from_utf8_unchecked(out_bytes) }
     }
 }
@@ -485,5 +503,14 @@ mod tests {
                         .unwrap(),
                        v);
         }
+    }
+
+    #[test]
+    fn test_base64_line_length_issue_196() {
+        assert_eq!(b"foob".to_base64(Config{line_length: Some(4), ..STANDARD}), "Zm9v\r\nYg==");
+        assert_eq!(b"foob".to_base64(Config{line_length: Some(5), ..STANDARD}), "Zm9vY\r\ng==");
+        assert_eq!(b"foob".to_base64(Config{line_length: Some(6), ..STANDARD}), "Zm9vYg\r\n==");
+        assert_eq!(b"foob".to_base64(Config{line_length: Some(7), ..STANDARD}), "Zm9vYg=\r\n=");
+        assert_eq!(b"foob".to_base64(Config{line_length: Some(8), ..STANDARD}), "Zm9vYg==");
     }
 }

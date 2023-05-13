@@ -247,7 +247,6 @@ use self::InternalStackElement::*;
 use std::collections::{HashMap, BTreeMap};
 use std::error::Error as StdError;
 use std::i64;
-use std::io::prelude::*;
 use std::mem::swap;
 use std::ops::Index;
 use std::str::FromStr;
