@@ -131,7 +131,6 @@ impl ToBase64 for [u8] {
 
         // Use iterators to reduce branching
         {
-            let mut write_len = 0;
             let mut cur_length = 0;
 
             let mut s_in = self[ .. len - mod_len].iter().map(|&x| x as u32);
@@ -145,13 +144,11 @@ impl ToBase64 for [u8] {
                     if cur_length >= line_length {
                         for b in newline.bytes() {
                             *s_out.next().unwrap() = b;
-                            write_len += 1;
                         }
                         cur_length = 0;
                     }
                 }
                 *s_out.next().unwrap() = val;
-                write_len += 1;
                 cur_length += 1;
             };
 
@@ -199,12 +196,12 @@ impl ToBase64 for [u8] {
                 _ => panic!("Algebra is broken, please alert the math police")
             }
 
-            assert_eq!(write_len, prealloc_len);
+            assert!(s_out.next().is_none());
         }
 
         // SAFETY: This is safe because `out_bytes` was constructed out of
         // only ASCII bytes, and we verified that it was fully initialized
-        // via `write_len`.
+        // via `s_out.next().is_none()`.
         unsafe { String::from_utf8_unchecked(out_bytes) }
     }
 }
