@@ -1,7 +1,7 @@
 [package]
-
-name = "rustc-serialize"
-version = "0.3.24"
+name = "rustc_serialize"
+version = "0.4.0-devel"
+edition = "2018"
 authors = ["The Rust Project Developers"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
@@ -16,5 +16,5 @@ support for hex, base64, and json encoding and decoding.
 This crate is deprecated in favor of serde.
 """
 
-[dev-dependencies]
-rand = "0.3"
+#[dev-dependencies]
+#rand = "0.3"
