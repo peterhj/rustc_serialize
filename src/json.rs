@@ -2146,16 +2146,13 @@ impl<I: Iterator<Item=Result<(usize, char), usize>>> Iterator for JsonLines<I> {
 
   fn next(&mut self) -> Option<Result<Json, ()>> {
     if self.err {
-      println!("DEBUG: jsonl: err 0");
       return Some(Err(()));
     }
     if self.eof {
-      println!("DEBUG: jsonl: eof 0");
       return None;
     }
     match self.build.as_mut().unwrap().build() {
       Err(_) => {
-        println!("DEBUG: jsonl: err 1");
         self.err = true;
         return Some(Err(()));
       }
@@ -2164,44 +2161,35 @@ impl<I: Iterator<Item=Result<(usize, char), usize>>> Iterator for JsonLines<I> {
         let build = self.build.take().unwrap();
         let (cfg, peek, iter) = build.into_inner();
         let mut peekiter = Peek{peek: peek.map(|c| Ok((0, c))), iter};
-        match peekiter.next() {
-          Some(Ok((_, '\n'))) => {}
-          Some(Ok((_, '\r'))) => {
-            match peekiter.next() {
-              Some(Ok((_, '\n'))) => {}
-              _ => {
-                println!("DEBUG: jsonl: err 2");
-                self.err = true;
-                return retv;
-              }
+        loop {
+          match peekiter.next() {
+            Some(Ok((_, '\n'))) => {
+              break;
             }
-          }
-          Some(Ok((_, c))) => {
-            println!("DEBUG: jsonl: err 3.1 c=0x{:x} (0x7b = '{}')", c as u32, '\x7b');
-            self.err = true;
-            return retv;
-          }
-          Some(Err(_)) => {
-            println!("DEBUG: jsonl: err 3.2");
-            self.err = true;
-            return retv;
-          }
-          None => {
-            println!("DEBUG: jsonl: eof 3");
-            self.eof = true;
-            return retv;
+            Some(Ok((_, ' ')))  |
+            Some(Ok((_, '\t'))) |
+            Some(Ok((_, '\r'))) => {
+              continue;
+            }
+            Some(Ok(_))  |
+            Some(Err(_)) => {
+              self.err = true;
+              return retv;
+            }
+            None => {
+              self.eof = true;
+              return retv;
+            }
           }
         }
         let peek = peekiter.next();
         let peek = match peek {
           Some(Ok((_, c))) => Some(c),
           Some(Err(_)) => {
-            println!("DEBUG: jsonl: err 4");
             self.err = true;
             return retv;
           }
           None => {
-            println!("DEBUG: jsonl: eof 4");
             self.eof = true;
             return retv;
           }
