@@ -73,6 +73,7 @@ mod collection_impls;
 pub mod base64;
 pub mod hex;
 pub mod json;
+pub mod utf8;
 
 mod rustc_serialize {
     pub use crate::serialize::*;
