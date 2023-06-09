@@ -51,9 +51,9 @@ impl<R: Read> CharBuffer<R> {
 }
 
 impl<R: Read> Iterator for CharBuffer<R> {
-    type Item = Result<(char, usize), usize>;
+    type Item = Result<(usize, char), usize>;
 
-    fn next(&mut self) -> Option<Result<(char, usize), usize>> {
+    fn next(&mut self) -> Option<Result<(usize, char), usize>> {
         if self.err {
             return Some(Err(self.off));
         }
@@ -111,7 +111,7 @@ impl<R: Read> Iterator for CharBuffer<R> {
                     self.buf[j - i] = self.buf[j];
                 }
                 self.bsz -= i as u8;
-                return Some(Ok((c, off)));
+                return Some(Ok((off, c)));
             }
         }
     }

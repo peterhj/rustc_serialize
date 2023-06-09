@@ -244,6 +244,9 @@ use self::DecoderError::*;
 use self::ParserState::*;
 use self::InternalStackElement::*;
 
+use crate::{Encodable};
+use crate::utf8::{CharBuffer};
+
 use std::collections::{HashMap, BTreeMap};
 use std::error::Error as StdError;
 use std::i64;
@@ -253,7 +256,41 @@ use std::str::FromStr;
 use std::string;
 use std::{char, f64, fmt, io, str};
 
-use crate::{Encodable};
+/// Configuration for json parsing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Config {
+    /// Accept parses with trailing characters.
+    /// Necessary to parse concatenated json, e.g. jsonl.
+    pub allow_trailing: bool,
+
+    /// FIXME: Allow trailing space characters.
+    pub eof_on_trailing_spaces: bool,
+}
+
+impl Default for Config {
+    fn default() -> Config {
+        Config{
+            allow_trailing: false,
+            eof_on_trailing_spaces: false,
+        }
+    }
+}
+
+impl Config {
+    /// A parsing configuration for JSON Lines (jsonl).
+    pub fn jsonl() -> Config {
+        Config{
+            allow_trailing: true,
+            eof_on_trailing_spaces: true,
+        }
+    }
+
+    /// Create a JSON builder from an io::Read.
+    pub fn from_reader<R: io::Read>(self, reader: R) -> Builder<CharBuffer<R>> {
+        let src = CharBuffer::from_reader(reader);
+        Builder::from_inner(self, None, src)
+    }
+}
 
 /// Represents a json value
 #[derive(Clone, PartialEq, PartialOrd, Debug)]
@@ -953,24 +990,15 @@ pub fn as_pretty_json<T: Encodable>(t: &T) -> AsPrettyJson<T> {
 }
 
 impl Json {
-    /// Decodes a json value from an `&mut io::Read`
-    pub fn from_reader(rdr: &mut dyn io::Read) -> Result<Self, BuilderError> {
-        let contents = {
-            let mut c = Vec::new();
-            rdr.read_to_end(&mut c)?;
-            c
-        };
-        let s = match str::from_utf8(&contents).ok() {
-            Some(s) => s,
-            _       => return Err(SyntaxError(NotUtf8, 0, 0))
-        };
-        let mut builder = Builder::new(s.chars());
+    /// Decodes a json value from an `io::Read`
+    pub fn from_reader<R: io::Read>(reader: R) -> Result<Self, BuilderError> {
+        let mut builder = Config::default().from_reader(reader);
         builder.build()
     }
 
     /// Decodes a json value from a string
     pub fn from_str(s: &str) -> Result<Self, BuilderError> {
-        let mut builder = Builder::new(s.chars());
+        let mut builder = Builder::new(s.char_indices().map(|x| Ok(x)));
         builder.build()
     }
 
@@ -982,7 +1010,7 @@ impl Json {
 
      /// If the Json value is an Object, returns the value associated with the provided key.
     /// Otherwise, returns None.
-    pub fn find<'a>(&'a self, key: &str) -> Option<&'a Json>{
+    pub fn find<'a>(&'a self, key: &str) -> Option<&'a Json> {
         match self {
             &Json::Object(ref map) => map.get(key),
             _ => None
@@ -992,7 +1020,7 @@ impl Json {
     /// Attempts to get a nested Json Object for each key in `keys`.
     /// If any key is found not to exist, find_path will return None.
     /// Otherwise, it will return the Json value associated with the final key.
-    pub fn find_path<'a>(&'a self, keys: &[&str]) -> Option<&'a Json>{
+    pub fn find_path<'a>(&'a self, keys: &[&str]) -> Option<&'a Json> {
         let mut target = self;
         for key in keys.iter() {
             match target.find(*key) {
@@ -1392,6 +1420,7 @@ impl Stack {
 /// an iterator of char.
 pub struct Parser<T> {
     rdr: T,
+    cfg: Config,
     ch: Option<char>,
     line: usize,
     col: usize,
@@ -1402,7 +1431,7 @@ pub struct Parser<T> {
     state: ParserState,
 }
 
-impl<T: Iterator<Item = char>> Iterator for Parser<T> {
+impl<T: Iterator<Item=Result<(usize, char), usize>>> Iterator for Parser<T> {
     type Item = JsonEvent;
 
     fn next(&mut self) -> Option<JsonEvent> {
@@ -1411,9 +1440,12 @@ impl<T: Iterator<Item = char>> Iterator for Parser<T> {
         }
 
         if self.state == ParseBeforeFinish {
-            self.parse_whitespace();
-            // Make sure there is no trailing characters.
-            if self.eof() {
+            if !self.cfg.eof_on_trailing_spaces {
+                self.parse_whitespace();
+            }
+            // Make sure there are no trailing characters,
+            // unless allowed by the parsing configuration.
+            if self.eof() || self.cfg.allow_trailing {
                 self.state = ParseFinished;
                 return None;
             } else {
@@ -1425,19 +1457,25 @@ impl<T: Iterator<Item = char>> Iterator for Parser<T> {
     }
 }
 
-impl<T: Iterator<Item = char>> Parser<T> {
+impl<T: Iterator<Item=Result<(usize, char), usize>>> Parser<T> {
     /// Creates the JSON parser.
-    pub fn new(rdr: T) -> Parser<T> {
+    pub fn new(cfg: Config, peek: Option<char>, rdr: T) -> Parser<T> {
         let mut p = Parser {
             rdr: rdr,
-            ch: Some('\x00'),
+            cfg,
+            ch: peek,
             line: 1,
             col: 0,
             stack: Stack::new(),
             state: ParseStart,
         };
-        p.bump();
+        p.first_bump();
         return p;
+    }
+
+    /// Unwraps the inner state of the finished parser.
+    pub fn into_inner(self) -> (Config, Option<char>, T) {
+        (self.cfg, self.ch, self.rdr)
     }
 
     /// Provides access to the current position in the logical structure of the
@@ -1448,8 +1486,30 @@ impl<T: Iterator<Item = char>> Parser<T> {
 
     fn eof(&self) -> bool { self.ch.is_none() }
     fn ch_or_null(&self) -> char { self.ch.unwrap_or('\x00') }
+
+    fn first_bump(&mut self) {
+        if self.ch.is_none() {
+            match self.rdr.next() {
+                None | Some(Err(_)) => {}
+                Some(Ok((_, c))) => {
+                    self.ch = Some(c);
+                }
+            }
+        }
+
+        if self.ch_is('\n') {
+            self.line += 1;
+            self.col = 1;
+        } else {
+            self.col += 1;
+        }
+    }
+
     fn bump(&mut self) {
-        self.ch = self.rdr.next();
+        self.ch = match self.rdr.next() {
+            None | Some(Err(_)) => None,
+            Some(Ok((_, c))) => Some(c),
+        };
 
         if self.ch_is('\n') {
             self.line += 1;
@@ -1949,10 +2009,19 @@ pub struct Builder<T> {
     token: Option<JsonEvent>,
 }
 
-impl<T: Iterator<Item = char>> Builder<T> {
-    /// Create a JSON Builder.
+impl<T: Iterator<Item=Result<(usize, char), usize>>> Builder<T> {
+    /// Create a JSON builder.
     pub fn new(src: T) -> Builder<T> {
-        Builder { parser: Parser::new(src), token: None, }
+        Builder::from_inner(Config::default(), None, src)
+    }
+
+    /// Create a JSON builder with parsing configuration and state.
+    pub fn from_inner(cfg: Config, peek: Option<char>, src: T) -> Builder<T> {
+        Builder { parser: Parser::new(cfg, peek, src), token: None, }
+    }
+
+    pub fn into_inner(self) -> (Config, Option<char>, T) {
+        self.parser.into_inner()
     }
 
     // Decode a Json value from a Parser.
@@ -2033,6 +2102,118 @@ impl<T: Iterator<Item = char>> Builder<T> {
         }
         return self.parser.error(EOFWhileParsingObject);
     }
+}
+
+/// Use a Builder to iterate over the JSON values of a JSON Lines stream.
+pub struct JsonLines<I> {
+  pub err: bool,
+  pub eof: bool,
+  pub build: Option<Builder<I>>,
+}
+
+impl<R: io::Read> JsonLines<CharBuffer<R>> {
+  /// Create a JSON Lines iterator from an io::Read.
+  pub fn from_reader(reader: R) -> JsonLines<CharBuffer<R>> {
+    let cfg = Config::jsonl();
+    let build = Some(cfg.from_reader(reader));
+    JsonLines{
+      err: false,
+      eof: false,
+      build,
+    }
+  }
+}
+
+/// Wraps an iterator with a single-item buffer.
+pub struct Peek<T, I> {
+  pub peek: Option<T>,
+  pub iter: I,
+}
+
+impl<T, I: Iterator<Item=T>> Iterator for Peek<T, I> {
+  type Item = T;
+
+  fn next(&mut self) -> Option<T> {
+    if let Some(item) = self.peek.take() {
+      return Some(item);
+    }
+    self.iter.next()
+  }
+}
+
+impl<I: Iterator<Item=Result<(usize, char), usize>>> Iterator for JsonLines<I> {
+  type Item = Result<Json, ()>;
+
+  fn next(&mut self) -> Option<Result<Json, ()>> {
+    if self.err {
+      println!("DEBUG: jsonl: err 0");
+      return Some(Err(()));
+    }
+    if self.eof {
+      println!("DEBUG: jsonl: eof 0");
+      return None;
+    }
+    match self.build.as_mut().unwrap().build() {
+      Err(_) => {
+        println!("DEBUG: jsonl: err 1");
+        self.err = true;
+        return Some(Err(()));
+      }
+      Ok(v) => {
+        let retv = Some(Ok(v));
+        let build = self.build.take().unwrap();
+        let (cfg, peek, iter) = build.into_inner();
+        let mut peekiter = Peek{peek: peek.map(|c| Ok((0, c))), iter};
+        match peekiter.next() {
+          Some(Ok((_, '\n'))) => {}
+          Some(Ok((_, '\r'))) => {
+            match peekiter.next() {
+              Some(Ok((_, '\n'))) => {}
+              _ => {
+                println!("DEBUG: jsonl: err 2");
+                self.err = true;
+                return retv;
+              }
+            }
+          }
+          Some(Ok((_, c))) => {
+            println!("DEBUG: jsonl: err 3.1 c=0x{:x} (0x7b = '{}')", c as u32, '\x7b');
+            self.err = true;
+            return retv;
+          }
+          Some(Err(_)) => {
+            println!("DEBUG: jsonl: err 3.2");
+            self.err = true;
+            return retv;
+          }
+          None => {
+            println!("DEBUG: jsonl: eof 3");
+            self.eof = true;
+            return retv;
+          }
+        }
+        let peek = peekiter.next();
+        let peek = match peek {
+          Some(Ok((_, c))) => Some(c),
+          Some(Err(_)) => {
+            println!("DEBUG: jsonl: err 4");
+            self.err = true;
+            return retv;
+          }
+          None => {
+            println!("DEBUG: jsonl: eof 4");
+            self.eof = true;
+            return retv;
+          }
+        };
+        assert!(peekiter.peek.is_none());
+        let Peek{iter, ..} = peekiter;
+        let build = Builder::from_inner(cfg, peek, iter);
+        self.build = Some(build);
+        retv
+      }
+    }
+  }
 }
 
 /// A structure to decode JSON to values in rust.
