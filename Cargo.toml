@@ -16,5 +16,11 @@ support for hex, base64, and json encoding and decoding.
 This crate is deprecated in favor of serde.
 """
 
+[features]
+default = ["smol_str"]
+
+[dependencies]
+smol_str = { version = "0.2", default_features = false, optional = true }
+
 #[dev-dependencies]
 #rand = "0.3"

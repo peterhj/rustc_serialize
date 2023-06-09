@@ -21,6 +21,11 @@
 Core encoding and decoding interfaces.
 */
 
+use crate::cap_capacity;
+
+#[cfg(feature = "smol_str")]
+use smol_str::{SmolStr};
+
 use std::cell::{Cell, RefCell};
 use std::ffi::OsString;
 use std::path;
@@ -28,8 +33,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::marker::PhantomData;
 use std::borrow::Cow;
-
-use crate::cap_capacity;
 
 /// Trait for writing out an encoding when serializing.
 ///
@@ -1039,6 +1042,20 @@ impl Encodable for String {
 impl Decodable for String {
     fn decode<D: Decoder>(d: &mut D) -> Result<String, D::Error> {
         d.read_str()
+    }
+}
+
+#[cfg(feature = "smol_str")]
+impl Encodable for SmolStr {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        s.emit_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "smol_str")]
+impl Decodable for SmolStr {
+    fn decode<D: Decoder>(d: &mut D) -> Result<SmolStr, D::Error> {
+        d.read_str().map(|s| s.into())
     }
 }
 

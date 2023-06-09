@@ -48,7 +48,9 @@
             unstable(feature = "rustc_private",
                      reason = "use the crates.io `rustc-serialize` library instead"))]
 
-#[cfg(test)] extern crate rand;
+//#[cfg(test)] extern crate rand;
+#[cfg(feature = "smol_str")]
+extern crate smol_str;
 
 pub use self::serialize::{Decoder, Encoder, Decodable, Encodable,
                           DecoderHelpers, EncoderHelpers};

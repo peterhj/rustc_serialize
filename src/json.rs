@@ -247,6 +247,9 @@ use self::InternalStackElement::*;
 use crate::{Encodable};
 use crate::utf8::{CharBuffer};
 
+#[cfg(feature = "smol_str")]
+use smol_str::{SmolStr};
+
 use std::collections::{HashMap, BTreeMap};
 use std::error::Error as StdError;
 use std::i64;
@@ -298,15 +301,20 @@ pub enum Json {
     I64(i64),
     U64(u64),
     F64(f64),
-    String(string::String),
+    String(String),
     Boolean(bool),
     Array(self::Array),
     Object(self::Object),
     Null,
 }
 
+#[cfg(not(feature = "smol_str"))]
+pub type String = string::String;
+#[cfg(feature = "smol_str")]
+pub type String = SmolStr;
+
 pub type Array = Vec<Json>;
-pub type Object = BTreeMap<string::String, Json>;
+pub type Object = BTreeMap<String, Json>;
 
 pub struct PrettyJson<'a> { inner: &'a Json }
 
@@ -423,13 +431,13 @@ pub fn decode<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
 }
 
 /// Shortcut function to encode a `T` into a JSON `String`
-pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
-    let mut s = String::new();
+pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<String> {
+    let mut s = string::String::new();
     {
         let mut encoder = Encoder::new(&mut s);
         object.encode(&mut encoder)?;
     }
-    Ok(s)
+    Ok(s.into())
 }
 
 impl fmt::Debug for ErrorCode {
@@ -2051,7 +2059,7 @@ impl<T: Iterator<Item=Result<(usize, char), usize>>> Builder<T> {
             Some(StringValue(ref mut s)) => {
                 let mut temp = string::String::new();
                 swap(s, &mut temp);
-                Ok(Json::String(temp))
+                Ok(Json::String(temp.into()))
             }
             Some(Error(e)) => Err(e),
             Some(ArrayStart) => self.build_array(),
@@ -2091,7 +2099,7 @@ impl<T: Iterator<Item=Result<(usize, char), usize>>> Builder<T> {
                 token => { self.token = token; }
             }
             let key = match self.parser.stack().top() {
-                Some(StackElement::Key(k)) => { k.to_string() }
+                Some(StackElement::Key(k)) => { k.into() }
                 _ => { panic!("invalid state"); }
             };
             match self.build_value() {
@@ -2272,7 +2280,7 @@ macro_rules! read_primitive {
                 // is going to have a string here, as per JSON spec.
                 Json::String(s) => match s.parse() {
                     Ok(f)  => Ok(f),
-                    Err(_) => Err(ExpectedError("Number".to_string(), s)),
+                    Err(_) => Err(ExpectedError("Number".to_string(), s.into())),
                 },
                 value => {
                     Err(ExpectedError("Number".to_string(), value.to_string()))
@@ -2314,7 +2322,7 @@ impl crate::Decoder for Decoder {
                 // is going to have a string here, as per JSON spec.
                 match s.parse() {
                     Ok(f)  => Ok(f),
-                    Err(_) => Err(ExpectedError("Number".to_string(), s)),
+                    Err(_) => Err(ExpectedError("Number".to_string(), s.into())),
                 }
             },
             Json::Null => Ok(f64::NAN),
@@ -2339,8 +2347,14 @@ impl crate::Decoder for Decoder {
         Err(ExpectedError("single character string".to_string(), format!("{}", s)))
     }
 
+    #[cfg(not(feature = "smol_str"))]
     fn read_str(&mut self) -> DecodeResult<string::String> {
         expect!(self.pop(), String)
+    }
+
+    #[cfg(feature = "smol_str")]
+    fn read_str(&mut self) -> DecodeResult<string::String> {
+        expect!(self.pop(), String).map(|s| s.into())
     }
 
     fn read_enum<T, F>(&mut self, _name: &str, f: F) -> DecodeResult<T> where
@@ -2356,7 +2370,7 @@ impl crate::Decoder for Decoder {
         let name = match self.pop()? {
             Json::String(s) => s,
             Json::Object(mut o) => {
-                let n = match o.remove(&"variant".to_string()) {
+                let n = match o.remove(&String::from("variant")) {
                     Some(Json::String(s)) => s,
                     Some(val) => {
                         return Err(ExpectedError("String".to_string(), format!("{}", val)))
@@ -2365,7 +2379,7 @@ impl crate::Decoder for Decoder {
                         return Err(MissingFieldError("variant".to_string()))
                     }
                 };
-                match o.remove(&"fields".to_string()) {
+                match o.remove(&String::from("fields")) {
                     Some(Json::Array(l)) => {
                         for field in l.into_iter().rev() {
                             self.stack.push(field);
@@ -2386,7 +2400,7 @@ impl crate::Decoder for Decoder {
         };
         let idx = match names.iter().position(|n| *n == name) {
             Some(idx) => idx,
-            None => return Err(UnknownVariantError(name))
+            None => return Err(UnknownVariantError(name.into()))
         };
         f(self, idx)
     }
@@ -2431,7 +2445,7 @@ impl crate::Decoder for Decoder {
     {
         let mut obj = expect!(self.pop(), Object)?;
 
-        let value = match obj.remove(&name.to_string()) {
+        let value = match obj.remove(&String::from(name)) {
             None => {
                 // Add a Null and try to parse it as an Option<_>
                 // to get None as a default value.
@@ -2596,11 +2610,16 @@ impl ToJson for bool {
 }
 
 impl ToJson for str {
-    fn to_json(&self) -> Json { Json::String(self.to_string()) }
+    fn to_json(&self) -> Json { Json::String(String::from(self)) }
 }
 
 impl ToJson for string::String {
-    fn to_json(&self) -> Json { Json::String((*self).clone()) }
+    fn to_json(&self) -> Json { Json::String(String::from(self)) }
+}
+
+#[cfg(feature = "smol_str")]
+impl ToJson for SmolStr {
+    fn to_json(&self) -> Json { Json::String(String::from(self.as_str())) }
 }
 
 macro_rules! tuple_impl {
@@ -2647,7 +2666,18 @@ impl<A: ToJson> ToJson for BTreeMap<string::String, A> {
     fn to_json(&self) -> Json {
         let mut d = BTreeMap::new();
         for (key, value) in self.iter() {
-            d.insert((*key).clone(), value.to_json());
+            d.insert(String::from(key), value.to_json());
+        }
+        Json::Object(d)
+    }
+}
+
+#[cfg(feature = "smol_str")]
+impl<A: ToJson> ToJson for BTreeMap<SmolStr, A> {
+    fn to_json(&self) -> Json {
+        let mut d = BTreeMap::new();
+        for (key, value) in self.iter() {
+            d.insert(String::from(key.as_str()), value.to_json());
         }
         Json::Object(d)
     }
@@ -2657,7 +2687,18 @@ impl<A: ToJson> ToJson for HashMap<string::String, A> {
     fn to_json(&self) -> Json {
         let mut d = BTreeMap::new();
         for (key, value) in self.iter() {
-            d.insert((*key).clone(), value.to_json());
+            d.insert(String::from(key), value.to_json());
+        }
+        Json::Object(d)
+    }
+}
+
+#[cfg(feature = "smol_str")]
+impl<A: ToJson> ToJson for HashMap<SmolStr, A> {
+    fn to_json(&self) -> Json {
+        let mut d = BTreeMap::new();
+        for (key, value) in self.iter() {
+            d.insert(String::from(key.as_str()), value.to_json());
         }
         Json::Object(d)
     }
