@@ -245,7 +245,7 @@ use self::ParserState::*;
 use self::InternalStackElement::*;
 
 use crate::{Encodable};
-use crate::utf8::{CharBuffer};
+use crate::utf8::{CharIndicesBuffer};
 
 #[cfg(feature = "smol_str")]
 use smol_str::{SmolStr};
@@ -289,8 +289,8 @@ impl Config {
     }
 
     /// Create a JSON builder from an io::Read.
-    pub fn from_reader<R: io::Read>(self, reader: R) -> Builder<CharBuffer<R>> {
-        let src = CharBuffer::from_reader(reader);
+    pub fn from_reader<R: io::Read>(self, reader: R) -> Builder<CharIndicesBuffer<R>> {
+        let src = CharIndicesBuffer::from_reader(reader);
         Builder::from_inner(self, None, src)
     }
 }
@@ -2119,9 +2119,9 @@ pub struct JsonLines<I> {
   pub build: Option<Builder<I>>,
 }
 
-impl<R: io::Read> JsonLines<CharBuffer<R>> {
+impl<R: io::Read> JsonLines<CharIndicesBuffer<R>> {
   /// Create a JSON Lines iterator from an io::Read.
-  pub fn from_reader(reader: R) -> JsonLines<CharBuffer<R>> {
+  pub fn from_reader(reader: R) -> JsonLines<CharIndicesBuffer<R>> {
     let cfg = Config::jsonl();
     let build = Some(cfg.from_reader(reader));
     JsonLines{
