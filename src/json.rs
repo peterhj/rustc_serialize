@@ -431,13 +431,13 @@ pub fn decode<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
 }
 
 /// Shortcut function to encode a `T` into a JSON `String`
-pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<String> {
+pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
     let mut s = string::String::new();
     {
         let mut encoder = Encoder::new(&mut s);
         object.encode(&mut encoder)?;
     }
-    Ok(s.into())
+    Ok(s)
 }
 
 impl fmt::Debug for ErrorCode {
@@ -1263,7 +1263,7 @@ pub enum JsonEvent {
     I64Value(i64),
     U64Value(u64),
     F64Value(f64),
-    StringValue(string::String),
+    StringValue(String),
     NullValue,
     Error(ParserError),
 }
@@ -1981,7 +1981,7 @@ impl<T: Iterator<Item=Result<char, ()>>> Parser<T> {
             'f' => { self.parse_ident("alse", BooleanValue(false)) }
             '0' ..= '9' | '-' => self.parse_number(),
             '"' => match self.parse_str() {
-                Ok(s) => StringValue(s),
+                Ok(s) => StringValue(s.into()),
                 Err(e) => Error(e),
             },
             '[' => {
@@ -2057,9 +2057,9 @@ impl<T: Iterator<Item=Result<char, ()>>> Builder<T> {
             Some(F64Value(n)) => Ok(Json::F64(n)),
             Some(BooleanValue(b)) => Ok(Json::Boolean(b)),
             Some(StringValue(ref mut s)) => {
-                let mut temp = string::String::new();
+                let mut temp = String::default();
                 swap(s, &mut temp);
-                Ok(Json::String(temp.into()))
+                Ok(Json::String(temp))
             }
             Some(Error(e)) => Err(e),
             Some(ArrayStart) => self.build_array(),
