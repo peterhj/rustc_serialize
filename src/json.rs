@@ -245,7 +245,7 @@ use self::ParserState::*;
 use self::InternalStackElement::*;
 
 use crate::{Encodable};
-use crate::utf8::{CharIndicesBuffer};
+use crate::utf8::{CharBuffer};
 
 #[cfg(feature = "smol_str")]
 use smol_str::{SmolStr};
@@ -289,8 +289,8 @@ impl Config {
     }
 
     /// Create a JSON builder from an io::Read.
-    pub fn from_reader<R: io::Read>(self, reader: R) -> Builder<CharIndicesBuffer<R>> {
-        let src = CharIndicesBuffer::from_reader(reader);
+    pub fn from_reader<R: io::Read>(self, reader: R) -> Builder<CharBuffer<R>> {
+        let src = CharBuffer::from_reader(reader);
         Builder::from_inner(self, None, src)
     }
 }
@@ -1006,7 +1006,7 @@ impl Json {
 
     /// Decodes a json value from a string
     pub fn from_str(s: &str) -> Result<Self, BuilderError> {
-        let mut builder = Builder::new(s.char_indices().map(|x| Ok(x)));
+        let mut builder = Builder::new(s.chars().map(|c| Ok(c)));
         builder.build()
     }
 
@@ -1439,7 +1439,7 @@ pub struct Parser<T> {
     state: ParserState,
 }
 
-impl<T: Iterator<Item=Result<(usize, char), usize>>> Iterator for Parser<T> {
+impl<T: Iterator<Item=Result<char, ()>>> Iterator for Parser<T> {
     type Item = JsonEvent;
 
     fn next(&mut self) -> Option<JsonEvent> {
@@ -1465,7 +1465,7 @@ impl<T: Iterator<Item=Result<(usize, char), usize>>> Iterator for Parser<T> {
     }
 }
 
-impl<T: Iterator<Item=Result<(usize, char), usize>>> Parser<T> {
+impl<T: Iterator<Item=Result<char, ()>>> Parser<T> {
     /// Creates the JSON parser.
     pub fn new(cfg: Config, peek: Option<char>, rdr: T) -> Parser<T> {
         let mut p = Parser {
@@ -1499,7 +1499,7 @@ impl<T: Iterator<Item=Result<(usize, char), usize>>> Parser<T> {
         if self.ch.is_none() {
             match self.rdr.next() {
                 None | Some(Err(_)) => {}
-                Some(Ok((_, c))) => {
+                Some(Ok(c)) => {
                     self.ch = Some(c);
                 }
             }
@@ -1516,7 +1516,7 @@ impl<T: Iterator<Item=Result<(usize, char), usize>>> Parser<T> {
     fn bump(&mut self) {
         self.ch = match self.rdr.next() {
             None | Some(Err(_)) => None,
-            Some(Ok((_, c))) => Some(c),
+            Some(Ok(c)) => Some(c),
         };
 
         if self.ch_is('\n') {
@@ -2017,7 +2017,7 @@ pub struct Builder<T> {
     token: Option<JsonEvent>,
 }
 
-impl<T: Iterator<Item=Result<(usize, char), usize>>> Builder<T> {
+impl<T: Iterator<Item=Result<char, ()>>> Builder<T> {
     /// Create a JSON builder.
     pub fn new(src: T) -> Builder<T> {
         Builder::from_inner(Config::default(), None, src)
@@ -2119,9 +2119,9 @@ pub struct JsonLines<I> {
   pub build: Option<Builder<I>>,
 }
 
-impl<R: io::Read> JsonLines<CharIndicesBuffer<R>> {
+impl<R: io::Read> JsonLines<CharBuffer<R>> {
   /// Create a JSON Lines iterator from an io::Read.
-  pub fn from_reader(reader: R) -> JsonLines<CharIndicesBuffer<R>> {
+  pub fn from_reader(reader: R) -> JsonLines<CharBuffer<R>> {
     let cfg = Config::jsonl();
     let build = Some(cfg.from_reader(reader));
     JsonLines{
@@ -2149,7 +2149,7 @@ impl<T, I: Iterator<Item=T>> Iterator for Peek<T, I> {
   }
 }
 
-impl<I: Iterator<Item=Result<(usize, char), usize>>> Iterator for JsonLines<I> {
+impl<I: Iterator<Item=Result<char, ()>>> Iterator for JsonLines<I> {
   type Item = Result<Json, ()>;
 
   fn next(&mut self) -> Option<Result<Json, ()>> {
@@ -2168,15 +2168,15 @@ impl<I: Iterator<Item=Result<(usize, char), usize>>> Iterator for JsonLines<I> {
         let retv = Some(Ok(v));
         let build = self.build.take().unwrap();
         let (cfg, peek, iter) = build.into_inner();
-        let mut peekiter = Peek{peek: peek.map(|c| Ok((0, c))), iter};
+        let mut peekiter = Peek{peek: peek.map(|c| Ok(c)), iter};
         loop {
           match peekiter.next() {
-            Some(Ok((_, '\n'))) => {
+            Some(Ok('\n')) => {
               break;
             }
-            Some(Ok((_, ' ')))  |
-            Some(Ok((_, '\t'))) |
-            Some(Ok((_, '\r'))) => {
+            Some(Ok(' '))  |
+            Some(Ok('\t')) |
+            Some(Ok('\r')) => {
               continue;
             }
             Some(Ok(_))  |
@@ -2192,7 +2192,7 @@ impl<I: Iterator<Item=Result<(usize, char), usize>>> Iterator for JsonLines<I> {
         }
         let peek = peekiter.next();
         let peek = match peek {
-          Some(Ok((_, c))) => Some(c),
+          Some(Ok(c)) => Some(c),
           Some(Err(_)) => {
             self.err = true;
             return retv;
