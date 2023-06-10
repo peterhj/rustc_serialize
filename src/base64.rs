@@ -49,6 +49,13 @@ pub struct Config {
     pub line_length: Option<usize>
 }
 
+impl Config {
+    /// Convert a value to base64 encoding with the given configuration.
+    pub fn encode<T: ToBase64>(self, value: &T) -> String {
+        value.to_base64(self)
+    }
+}
+
 /// Configuration for RFC 4648 standard base64 encoding
 pub static STANDARD: Config =
     Config {char_set: Standard, newline: Newline::CRLF, pad: true, line_length: None};
@@ -61,13 +68,13 @@ pub static URL_SAFE: Config =
 pub static MIME: Config =
     Config {char_set: Standard, newline: Newline::CRLF, pad: true, line_length: Some(76)};
 
-static STANDARD_CHARS: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
-                                         abcdefghijklmnopqrstuvwxyz\
-                                         0123456789+/";
+pub static STANDARD_CHARS: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                                             abcdefghijklmnopqrstuvwxyz\
+                                             0123456789+/";
 
-static URL_SAFE_CHARS: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
-                                         abcdefghijklmnopqrstuvwxyz\
-                                         0123456789-_";
+pub static URL_SAFE_CHARS: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                                             abcdefghijklmnopqrstuvwxyz\
+                                             0123456789-_";
 
 /// A trait for converting a value to base64 encoding.
 pub trait ToBase64 {
