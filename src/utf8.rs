@@ -1,9 +1,28 @@
 //! Utilities for safely working with UTF-8 byte streams.
+//!
+//! Some parts are directly copied from private implementations
+//! in core::char and core::num.
 
 use std::io::{Read};
 use std::str::{from_utf8};
 
-// from the implementation in core::num (why is it private?)
+pub const MAX_ONE_B: u32 = 0x80;
+pub const MAX_TWO_B: u32 = 0x800;
+pub const MAX_THREE_B: u32 = 0x10000;
+
+#[inline]
+pub const fn len_utf8(code: u32) -> usize {
+    if code < MAX_ONE_B {
+        1
+    } else if code < MAX_TWO_B {
+        2
+    } else if code < MAX_THREE_B {
+        3
+    } else {
+        4
+    }
+}
+
 #[inline]
 pub const fn is_utf8_char_boundary(this: u8) -> bool {
     // This is bit magic equivalent to: b < 128 || b >= 192
@@ -104,7 +123,7 @@ impl<R: Read> Iterator for CharBuffer<R> {
             }
             Ok(s) => {
                 let c = s.chars().next().unwrap();
-                assert_eq!(c.len_utf8(), i);
+                assert_eq!(len_utf8(c as u32), i);
                 drop(s);
                 for j in i .. 4 {
                     self.buf[j - i] = self.buf[j];
@@ -159,7 +178,7 @@ impl<R: Read> Iterator for CharIndicesBuffer<R> {
             }
             Some(Ok(c)) => {
                 let off = self.off;
-                self.off += c.len_utf8();
+                self.off += len_utf8(c as u32);
                 Some(Ok((off, c)))
             }
         }
