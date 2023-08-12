@@ -280,14 +280,6 @@ impl Default for Config {
 }
 
 impl Config {
-    /// A parsing configuration for JSON Lines (jsonl).
-    pub fn jsonl() -> Config {
-        Config{
-            allow_trailing: true,
-            eof_on_trailing_spaces: true,
-        }
-    }
-
     /// Create a JSON builder from an io::Read.
     pub fn from_reader<R: io::Read>(self, reader: R) -> Builder<CharBuffer<R>> {
         let src = CharBuffer::from_reader(reader);
@@ -419,8 +411,14 @@ pub fn error_str(error: ErrorCode) -> &'static str {
     }
 }
 
+/// Shortcut function to decode a JSON value into an object
+pub fn decode_from_json<T: crate::Decodable>(json: Json) -> DecodeResult<T> {
+    let mut decoder = Decoder::new(json);
+    crate::Decodable::decode(&mut decoder)
+}
+
 /// Shortcut function to decode a JSON `&str` into an object
-pub fn decode<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
+pub fn decode_from_str<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
     let json = match Json::from_str(s) {
         Ok(x) => x,
         Err(e) => return Err(ParseError(e))
@@ -428,6 +426,11 @@ pub fn decode<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
 
     let mut decoder = Decoder::new(json);
     crate::Decodable::decode(&mut decoder)
+}
+
+/// Shortcut function to decode a JSON `&str` into an object
+pub fn decode<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
+    decode_from_str(s)
 }
 
 /// Shortcut function to encode a `T` into a JSON `String`
@@ -2122,7 +2125,10 @@ pub struct JsonLines<I> {
 impl<R: io::Read> JsonLines<CharBuffer<R>> {
   /// Create a JSON Lines iterator from an io::Read.
   pub fn from_reader(reader: R) -> JsonLines<CharBuffer<R>> {
-    let cfg = Config::jsonl();
+    let cfg = Config{
+        allow_trailing: true,
+        eof_on_trailing_spaces: true,
+    };
     let build = Some(cfg.from_reader(reader));
     JsonLines{
       err: false,

@@ -219,6 +219,14 @@ impl<'a, T: ?Sized + ToBase64> ToBase64 for &'a T {
     }
 }
 
+pub fn decode_from_str(s: &str) -> Result<Vec<u8>, FromBase64Error> {
+    s.from_base64()
+}
+
+pub fn decode(s: &str) -> Result<Vec<u8>, FromBase64Error> {
+    decode_from_str(s)
+}
+
 /// A trait for converting from base64 encoded values.
 pub trait FromBase64 {
     /// Converts the value of `self`, interpreted as base64 encoded data, into
