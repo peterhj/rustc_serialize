@@ -433,6 +433,16 @@ pub fn decode<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
     decode_from_str(s)
 }
 
+/// Shortcut function to encode a `T` into bytes
+pub fn encode_to_bytes<T: crate::Encodable>(object: &T) -> EncodeResult<Vec<u8>> {
+    let mut s = string::String::new();
+    {
+        let mut encoder = Encoder::new(&mut s);
+        object.encode(&mut encoder)?;
+    }
+    Ok(s.into())
+}
+
 /// Shortcut function to encode a `T` into a JSON `String`
 pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
     let mut s = string::String::new();
