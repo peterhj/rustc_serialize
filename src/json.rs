@@ -259,6 +259,8 @@ use std::str::FromStr;
 use std::string;
 use std::{char, f64, fmt, io, str};
 
+pub type BuilderConfig = Config;
+
 /// Configuration for json parsing.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Config {
@@ -444,13 +446,18 @@ pub fn encode_to_bytes<T: crate::Encodable>(object: &T) -> EncodeResult<Vec<u8>>
 }
 
 /// Shortcut function to encode a `T` into a JSON `String`
-pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
+pub fn encode_to_string<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
     let mut s = string::String::new();
     {
         let mut encoder = Encoder::new(&mut s);
         object.encode(&mut encoder)?;
     }
     Ok(s)
+}
+
+/// Shortcut function to encode a `T` into a JSON `String`
+pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
+    encode_to_string(object)
 }
 
 impl fmt::Debug for ErrorCode {
