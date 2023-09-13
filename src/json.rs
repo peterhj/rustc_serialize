@@ -636,6 +636,8 @@ enum EncodingFormat {
     }
 }
 
+pub type JsonEncoder<'a> = Encoder<'a>;
+
 /// A structure for implementing serialization to JSON.
 pub struct Encoder<'a> {
     writer: &'a mut (dyn fmt::Write+'a),
@@ -1028,6 +1030,12 @@ impl Json {
     pub fn from_str(s: &str) -> Result<Self, BuilderError> {
         let mut builder = Builder::new(s.chars().map(|c| Ok(c)));
         builder.build()
+    }
+
+    /// Shortcut function to decode a json value into a decodable type
+    pub fn decode_into<T: crate::Decodable>(self) -> DecodeResult<T> {
+        let mut decoder = Decoder::new(self);
+        crate::Decodable::decode(&mut decoder)
     }
 
     /// Borrow this json object as a pretty object to generate a pretty
@@ -1524,7 +1532,6 @@ impl<T: Iterator<Item=Result<char, ()>>> Parser<T> {
                 }
             }
         }
-
         if self.ch_is('\n') {
             self.line += 1;
             self.col = 1;
@@ -1536,9 +1543,10 @@ impl<T: Iterator<Item=Result<char, ()>>> Parser<T> {
     fn bump(&mut self) {
         self.ch = match self.rdr.next() {
             None | Some(Err(_)) => None,
-            Some(Ok(c)) => Some(c),
+            Some(Ok(c)) => {
+                Some(c)
+            }
         };
-
         if self.ch_is('\n') {
             self.line += 1;
             self.col = 1;
