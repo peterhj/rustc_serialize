@@ -51,7 +51,7 @@ pub struct Config {
 
 impl Config {
     /// Convert a value to base64 encoding with the given configuration.
-    pub fn encode<T: ToBase64>(self, value: &T) -> String {
+    pub fn encode<T: ToBase64 + ?Sized>(self, value: &T) -> String {
         value.to_base64(self)
     }
 }

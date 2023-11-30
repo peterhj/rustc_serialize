@@ -32,7 +32,7 @@ use std::path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::marker::PhantomData;
-use std::borrow::Cow;
+/*use std::borrow::Cow;*/
 
 /// Trait for writing out an encoding when serializing.
 ///

@@ -436,7 +436,7 @@ pub fn decode<T: crate::Decodable>(s: &str) -> DecodeResult<T> {
 }
 
 /// Shortcut function to encode a `T` into bytes
-pub fn encode_to_bytes<T: crate::Encodable>(object: &T) -> EncodeResult<Vec<u8>> {
+pub fn encode_to_bytes<T: crate::Encodable + ?Sized>(object: &T) -> EncodeResult<Vec<u8>> {
     let mut s = string::String::new();
     {
         let mut encoder = Encoder::new(&mut s);
@@ -446,7 +446,7 @@ pub fn encode_to_bytes<T: crate::Encodable>(object: &T) -> EncodeResult<Vec<u8>>
 }
 
 /// Shortcut function to encode a `T` into a JSON `String`
-pub fn encode_to_string<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
+pub fn encode_to_string<T: crate::Encodable + ?Sized>(object: &T) -> EncodeResult<string::String> {
     let mut s = string::String::new();
     {
         let mut encoder = Encoder::new(&mut s);
@@ -456,7 +456,7 @@ pub fn encode_to_string<T: crate::Encodable>(object: &T) -> EncodeResult<string:
 }
 
 /// Shortcut function to encode a `T` into a JSON `String`
-pub fn encode<T: crate::Encodable>(object: &T) -> EncodeResult<string::String> {
+pub fn encode<T: crate::Encodable + ?Sized>(object: &T) -> EncodeResult<string::String> {
     encode_to_string(object)
 }
 
