@@ -213,6 +213,12 @@ impl ToBase64 for [u8] {
     }
 }
 
+impl ToBase64 for Vec<u8> {
+    fn to_base64(&self, config: Config) -> String {
+        (&self as &[_]).to_base64(config)
+    }
+}
+
 impl<'a, T: ?Sized + ToBase64> ToBase64 for &'a T {
     fn to_base64(&self, config: Config) -> String {
         (**self).to_base64(config)

@@ -489,6 +489,8 @@ pub trait Encoder {
     /// emitted followed immediately by the value.
     fn emit_map_elt_val<F>(&mut self, idx: usize, f: F) -> Result<(), Self::Error>
         where F: FnOnce(&mut Self) -> Result<(), Self::Error>;
+
+    fn error(&mut self, err: &str) -> Self::Error;
 }
 
 /// Trait for reading in an encoding for deserialization.

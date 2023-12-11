@@ -295,11 +295,40 @@ pub enum Json {
     I64(i64),
     U64(u64),
     F64(f64),
-    String(String),
+    String(self::String),
     Boolean(bool),
     Array(self::Array),
     Object(self::Object),
     Null,
+}
+
+impl From<string::String> for Json {
+    #[inline]
+    fn from(v: string::String) -> Json {
+        Json::String(v.into())
+    }
+}
+
+#[cfg(feature = "smol_str")]
+impl From<SmolStr> for Json {
+    #[inline]
+    fn from(v: SmolStr) -> Json {
+        Json::String(v.into())
+    }
+}
+
+impl From<self::Array> for Json {
+    #[inline]
+    fn from(v: self::Array) -> Json {
+        Json::Array(v)
+    }
+}
+
+impl From<self::Object> for Json {
+    #[inline]
+    fn from(v: self::Object) -> Json {
+        Json::Object(v)
+    }
 }
 
 #[cfg(not(feature = "smol_str"))]
@@ -369,24 +398,21 @@ pub enum DecoderError {
     EOF,
 }
 
-#[derive(Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum EncoderError {
     FmtError(fmt::Error),
     BadHashmapKey,
+    ApplicationError(string::String),
 }
 
 impl PartialEq for EncoderError {
     fn eq(&self, other: &EncoderError) -> bool {
-        match (*self, *other) {
-            (EncoderError::FmtError(_), EncoderError::FmtError(_)) => true,
-            (EncoderError::BadHashmapKey, EncoderError::BadHashmapKey) => true,
+        match (self, other) {
+            (&EncoderError::FmtError(_), &EncoderError::FmtError(_)) => true,
+            (&EncoderError::BadHashmapKey, &EncoderError::BadHashmapKey) => true,
             _ => false,
         }
     }
-}
-
-impl Clone for EncoderError {
-    fn clone(&self) -> Self { *self }
 }
 
 /// Returns a readable error string for a given error code.
@@ -989,6 +1015,10 @@ impl<'a> crate::Encoder for Encoder<'a> {
             write!(self.writer, ":")?;
         }
         f(self)
+    }
+
+    fn error(&mut self, err: &str) -> Self::Error {
+        EncoderError::ApplicationError(err.to_string())
     }
 }
 
