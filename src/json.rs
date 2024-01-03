@@ -547,7 +547,7 @@ impl From<fmt::Error> for EncoderError {
 pub type EncodeResult<T> = Result<T, EncoderError>;
 pub type DecodeResult<T> = Result<T, DecoderError>;
 
-fn escape_str(wr: &mut dyn fmt::Write, v: &str) -> EncodeResult<()> {
+pub fn escape_str(wr: &mut dyn fmt::Write, v: &str) -> EncodeResult<()> {
     wr.write_str("\"")?;
 
     let mut start = 0;
